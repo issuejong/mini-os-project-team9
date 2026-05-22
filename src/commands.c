@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "commands.h"
@@ -425,4 +426,4 @@ void cmd_mv(const char *srcPath, const char *destPath) {
 
 void cmd_rm(const char *path, int recursive, int force) {
     printf("[rm] path=%s, recursive=%d, force=%d\n", path, recursive, force);
-  
+}

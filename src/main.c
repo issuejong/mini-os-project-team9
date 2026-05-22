@@ -1,7 +1,6 @@
-#include <stdio.h>
+#include "shell.h"
 
 int main(void) {
-    printf("Mini OS started.\n");
-    printf("miniOS:/ $ \n");
+    shell_loop();
     return 0;
 }
