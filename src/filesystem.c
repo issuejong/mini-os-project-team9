@@ -151,19 +151,6 @@ Node* changeDirectory(Node* current, char* path) {
 
     return currentNode;
 }
-// 저장 함수 기본 구조
-void saveFileSystem(const char* filename) {
-    FILE* fp = fopen(filename, "w");
-
-    if (fp == NULL) {
-        printf("save error\n");
-        return;
-    }
-
-    fprintf(fp, "filesystem save structure\n");
-
-    fclose(fp);
-}
 
 // 로드 함수 기본 구조
 void loadFileSystem(const char* filename) {

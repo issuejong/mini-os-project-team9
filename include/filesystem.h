@@ -1,6 +1,7 @@
-#include <stdio.h>
 #ifndef FILESYSTEM_H
 #define FILESYSTEM_H
+
+#include <stdio.h>
 
 #define MAX_NAME 50
 
@@ -25,7 +26,7 @@ Node* findChild(Node* parent, char* name);
 
 void printPath(Node* current);
 
-Node* changeDirectory(Node* current, char* name);
+Node* changeDirectory(Node* current, char* path);
 
 extern Node* rootDirectory;
 
