@@ -26,4 +26,11 @@ void printPath(Node* current);
 
 Node* changeDirectory(Node* current, char* name);
 
+extern Node* rootDirectory;
+
+void initializeFileSystem();
+
+void saveFileSystem(const char* filename);
+
+void loadFileSystem(const char* filename);
 #endif

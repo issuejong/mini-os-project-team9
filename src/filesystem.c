@@ -53,3 +53,92 @@ Node* findChild(Node* parent, char* name) {
 
     return NULL;
 }
+
+// 루트 디렉토리
+Node* rootDirectory = NULL;
+
+// 파일 시스템 초기화
+void initializeFileSystem() {
+    rootDirectory = createNode("/", 1);
+    currentDirectory = rootDirectory;
+}
+
+// 현재 경로 출력
+void printPath(Node* current) {
+    if (current == NULL) {
+        return;
+    }
+
+    if (current == rootDirectory) {
+        printf("/");
+        return;
+    }
+
+    if (current->parent != NULL) {
+        printPath(current->parent);
+    }
+
+    if (current->parent == rootDirectory) {
+        printf("%s", current->name);
+    } else {
+        printf("/%s", current->name);
+    }
+}
+
+// 디렉토리 이동
+Node* changeDirectory(Node* current, char* name) {
+    if (current == NULL) {
+        return current;
+    }
+
+    if (strcmp(name, "/") == 0) {
+        return rootDirectory;
+    }
+
+    if (strcmp(name, "..") == 0) {
+        if (current->parent != NULL) {
+            return current->parent;
+        }
+        return current;
+    }
+
+    Node* target = findChild(current, name);
+
+    if (target == NULL) {
+        printf("cd: no such directory\n");
+        return current;
+    }
+
+    if (target->isDirectory == 0) {
+        printf("cd: not a directory\n");
+        return current;
+    }
+
+    return target;
+}
+
+// 저장 함수 기본 구조
+void saveFileSystem(const char* filename) {
+    FILE* fp = fopen(filename, "w");
+
+    if (fp == NULL) {
+        printf("save error\n");
+        return;
+    }
+
+    fprintf(fp, "filesystem save structure\n");
+
+    fclose(fp);
+}
+
+// 로드 함수 기본 구조
+void loadFileSystem(const char* filename) {
+    FILE* fp = fopen(filename, "r");
+
+    if (fp == NULL) {
+        printf("load error\n");
+        return;
+    }
+
+    fclose(fp);
+}
