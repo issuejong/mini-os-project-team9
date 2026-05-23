@@ -1,3 +1,4 @@
+#include <stdio.h>
 #ifndef FILESYSTEM_H
 #define FILESYSTEM_H
 
@@ -33,4 +34,7 @@ void initializeFileSystem();
 void saveFileSystem(const char* filename);
 
 void loadFileSystem(const char* filename);
+
+void saveNode(FILE* fp, Node* node, int depth);
+
 #endif

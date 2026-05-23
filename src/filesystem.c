@@ -86,37 +86,71 @@ void printPath(Node* current) {
 }
 
 // 디렉토리 이동
-Node* changeDirectory(Node* current, char* name) {
-    if (current == NULL) {
+Node* changeDirectory(Node* current, char* path) {
+
+    if (current == NULL || path == NULL) {
         return current;
     }
 
-    if (strcmp(name, "/") == 0) {
+    // 루트 이동
+    if (strcmp(path, "/") == 0) {
         return rootDirectory;
     }
 
-    if (strcmp(name, "..") == 0) {
-        if (current->parent != NULL) {
-            return current->parent;
+    // 상대경로 처리용 복사
+    char tempPath[256];
+    strcpy(tempPath, path);
+
+    Node* currentNode;
+
+    // 절대경로
+    if (path[0] == '/') {
+        currentNode = rootDirectory;
+    }
+    else {
+        currentNode = current;
+    }
+
+    char* token = strtok(tempPath, "/");
+
+    while (token != NULL) {
+
+        // 현재 디렉토리
+        if (strcmp(token, ".") == 0) {
+            token = strtok(NULL, "/");
+            continue;
         }
-        return current;
+
+        // 상위 디렉토리
+        if (strcmp(token, "..") == 0) {
+
+            if (currentNode->parent != NULL) {
+                currentNode = currentNode->parent;
+            }
+
+            token = strtok(NULL, "/");
+            continue;
+        }
+
+        Node* target = findChild(currentNode, token);
+
+        if (target == NULL) {
+            printf("cd: no such directory: %s\n", token);
+            return current;
+        }
+
+        if (target->isDirectory == 0) {
+            printf("cd: not a directory: %s\n", token);
+            return current;
+        }
+
+        currentNode = target;
+
+        token = strtok(NULL, "/");
     }
 
-    Node* target = findChild(current, name);
-
-    if (target == NULL) {
-        printf("cd: no such directory\n");
-        return current;
-    }
-
-    if (target->isDirectory == 0) {
-        printf("cd: not a directory\n");
-        return current;
-    }
-
-    return target;
+    return currentNode;
 }
-
 // 저장 함수 기본 구조
 void saveFileSystem(const char* filename) {
     FILE* fp = fopen(filename, "w");
@@ -141,4 +175,39 @@ void loadFileSystem(const char* filename) {
     }
 
     fclose(fp);
+}
+// 노드 저장
+void saveNode(FILE* fp, Node* node, int depth) {
+
+    if (node == NULL) {
+        return;
+    }
+
+    for (int i = 0; i < depth; i++) {
+        fprintf(fp, "  ");
+    }
+
+    fprintf(fp, "%s %d\n", node->name, node->isDirectory);
+
+    saveNode(fp, node->child, depth + 1);
+
+    saveNode(fp, node->sibling, depth);
+}
+
+
+// 파일 시스템 저장
+void saveFileSystem(const char* filename) {
+
+    FILE* fp = fopen(filename, "w");
+
+    if (fp == NULL) {
+        printf("save error\n");
+        return;
+    }
+
+    saveNode(fp, rootDirectory, 0);
+
+    fclose(fp);
+
+    printf("filesystem saved\n");
 }
