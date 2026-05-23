@@ -17,6 +17,9 @@ typedef struct Node {
 // 현재 디렉토리
 extern Node* currentDirectory;
 
+// 루트 디렉토리
+extern Node* rootDirectory;
+
 // 함수 선언
 Node* createNode(char* name, int isDirectory);
 
@@ -27,8 +30,6 @@ Node* findChild(Node* parent, char* name);
 void printPath(Node* current);
 
 Node* changeDirectory(Node* current, char* path);
-
-extern Node* rootDirectory;
 
 void initializeFileSystem();
 
