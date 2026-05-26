@@ -1,10 +1,76 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "commands.h"
 #include "shell.h"
 
 #define MAX_INPUT 1024
 #define MAX_ARGS 64
+#define HISTORY_MAX 100
+
+static char command_history[HISTORY_MAX][MAX_INPUT];
+static int history_count = 0;
+
+static void add_history(const char *input)
+{
+    if (input == NULL || strlen(input) == 0) {
+        return;
+    }
+
+    if (history_count < HISTORY_MAX) {
+        strcpy(command_history[history_count], input);
+        history_count++;
+    } else {
+        for (int i = 1; i < HISTORY_MAX; i++) {
+            strcpy(command_history[i - 1], command_history[i]);
+        }
+        strcpy(command_history[HISTORY_MAX - 1], input);
+    }
+}
+
+static void print_history_all(void)
+{
+    for (int i = 0; i < history_count; i++) {
+        printf("%d  %s\n", i + 1, command_history[i]);
+    }
+}
+
+static void print_history_recent(int n)
+{
+    if (n <= 0) {
+        printf("history: invalid number\n");
+        return;
+    }
+
+    int start = history_count - n;
+    if (start < 0) {
+        start = 0;
+    }
+
+    for (int i = start; i < history_count; i++) {
+        printf("%d  %s\n", i + 1, command_history[i]);
+    }
+}
+
+static void clear_history(void)
+{
+    history_count = 0;
+    printf("history cleared\n");
+}
+
+static void run_history_command(int argc, char *argv[])
+{
+    if (argc == 1) {
+        print_history_all();
+    } else if (argc == 2 && strcmp(argv[1], "-c") == 0) {
+        clear_history();
+    } else if (argc == 2) {
+        int n = atoi(argv[1]);
+        print_history_recent(n);
+    } else {
+        printf("usage: history [n|-c]\n");
+    }
+}
 
 static int parse_input(char *input, char *argv[]) {
     int argc = 0;
@@ -62,8 +128,14 @@ static void run_command(int argc, char *argv[]) {
         } else {
             printf("rm: missing operand\n");
         }
+    } else if (strcmp(argv[0], "tree") == 0) {
+        cmd_tree(argc, argv);
+    } else if (strcmp(argv[0], "find") == 0) {
+        cmd_find(argc, argv);
+    } else if (strcmp(argv[0], "history") == 0) {
+        run_history_command(argc, argv);
     } else if (strcmp(argv[0], "help") == 0) {
-        printf("commands: pwd, ls, cd, mkdir, cat, chown, grep, mv, rm, help, exit\n");
+        printf("commands: pwd, ls, cd, mkdir, cat, chown, grep, mv, rm, tree [-d], find [-name|-type], history [n|-c], help, exit\n");
     } else {
         printf("%s: command not found\n", argv[0]);
     }
@@ -83,6 +155,13 @@ void shell_loop(void) {
             printf("\n");
             break;
         }
+
+        input[strcspn(input, "\n")] = '\0';
+
+        if (strlen(input) == 0) {
+            continue;
+        }
+        add_history(input);
 
         int argc = parse_input(input, argv);
 
