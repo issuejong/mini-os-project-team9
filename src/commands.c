@@ -17,6 +17,7 @@ typedef struct Node {
     char name[MAX_NAME];
     NodeType type;
     char content[MAX_CONTENT];
+    char owner[MAX_NAME];
 
     struct Node *parent;
     struct Node *child;
@@ -44,7 +45,7 @@ static Node *create_node(const char *name, NodeType type) {
 
     node->type = type;
     node->content[0] = '\0';
-
+    strcpy(node->owner, "team9");
     node->parent = NULL;
     node->child = NULL;
     node->sibling = NULL;
@@ -412,18 +413,208 @@ void cmd_cat(int argc, char *argv[]) {
 }
 
 /* Jihwan */
+
+/* 현재 디렉토리 기준으로 간단한 파일/디렉토리 이름 찾기 */
+static Node *find_node_simple(const char *path) {
+    if (path == NULL || strlen(path) == 0) {
+        return NULL;
+    }
+
+    if (strcmp(path, ".") == 0) {
+        return current_dir;
+    }
+
+    if (strcmp(path, "..") == 0) {
+        if (current_dir != root) {
+            return current_dir->parent;
+        }
+        return root;
+    }
+
+    return find_child(current_dir, path);
+}
+
+/* 부모의 child/sibling 연결에서 target을 분리 */
+static int detach_child(Node *parent, Node *target) {
+    if (parent == NULL || target == NULL) {
+        return 0;
+    }
+
+    Node *prev = NULL;
+    Node *cur = parent->child;
+
+    while (cur != NULL) {
+        if (cur == target) {
+            if (prev == NULL) {
+                parent->child = cur->sibling;
+            } else {
+                prev->sibling = cur->sibling;
+            }
+
+            cur->sibling = NULL;
+            cur->parent = NULL;
+            return 1;
+        }
+
+        prev = cur;
+        cur = cur->sibling;
+    }
+
+    return 0;
+}
+
+/* 디렉토리 내부까지 재귀적으로 메모리 해제 */
+static void free_tree(Node *node) {
+    if (node == NULL) {
+        return;
+    }
+
+    Node *child = node->child;
+
+    while (child != NULL) {
+        Node *next = child->sibling;
+        free_tree(child);
+        child = next;
+    }
+
+    free(node);
+}
+
+/* chown owner file */
 void cmd_chown(const char *owner, const char *path) {
-    printf("[chown] owner=%s, path=%s\n", owner, path);
+    init_file_system_if_needed();
+
+    if (owner == NULL || path == NULL) {
+        printf("chown: missing operand\n");
+        return;
+    }
+
+    Node *target = find_node_simple(path);
+
+    if (target == NULL) {
+        printf("chown: cannot access '%s': No such file or directory\n", path);
+        return;
+    }
+
+    strncpy(target->owner, owner, MAX_NAME - 1);
+    target->owner[MAX_NAME - 1] = '\0';
+
+    printf("owner of '%s' changed to '%s'\n", target->name, target->owner);
 }
 
+/* grep keyword file */
+/* grep -n keyword file */
 void cmd_grep(const char *keyword, const char *path, int showLineNumber) {
-    printf("[grep] keyword=%s, path=%s, -n=%d\n", keyword, path, showLineNumber);
+    init_file_system_if_needed();
+
+    if (keyword == NULL || path == NULL) {
+        printf("grep: missing operand\n");
+        return;
+    }
+
+    Node *file = find_node_simple(path);
+
+    if (file == NULL) {
+        printf("grep: %s: No such file\n", path);
+        return;
+    }
+
+    if (file->type != NODE_FILE) {
+        printf("grep: %s: Is a directory\n", path);
+        return;
+    }
+
+    char content_copy[MAX_CONTENT];
+    strncpy(content_copy, file->content, MAX_CONTENT - 1);
+    content_copy[MAX_CONTENT - 1] = '\0';
+
+    char *line = strtok(content_copy, "\n");
+    int line_number = 1;
+    int found = 0;
+
+    while (line != NULL) {
+        if (strstr(line, keyword) != NULL) {
+            if (showLineNumber) {
+                printf("%d:%s\n", line_number, line);
+            } else {
+                printf("%s\n", line);
+            }
+
+            found = 1;
+        }
+
+        line = strtok(NULL, "\n");
+        line_number++;
+    }
+
+    if (!found) {
+        printf("grep: no match found\n");
+    }
 }
 
+/* mv oldname newname */
+/* mv file directory */
 void cmd_mv(const char *srcPath, const char *destPath) {
-    printf("[mv] src=%s, dest=%s\n", srcPath, destPath);
+    init_file_system_if_needed();
+
+    if (srcPath == NULL || destPath == NULL) {
+        printf("mv: missing operand\n");
+        return;
+    }
+
+    Node *src = find_node_simple(srcPath);
+
+    if (src == NULL) {
+        printf("mv: cannot stat '%s': No such file or directory\n", srcPath);
+        return;
+    }
+
+    if (src == root) {
+        printf("mv: cannot move root directory\n");
+        return;
+    }
+
+    Node *dest = find_node_simple(destPath);
+
+    /*
+        dest가 기존 디렉토리이면:
+        src를 dest 안으로 이동
+    */
+    if (dest != NULL && dest->type == NODE_DIR) {
+        if (find_child(dest, src->name) != NULL) {
+            printf("mv: cannot move '%s': File exists in destination\n", src->name);
+            return;
+        }
+
+        detach_child(src->parent, src);
+        add_child(dest, src);
+
+        printf("moved '%s' into '%s'\n", srcPath, destPath);
+        return;
+    }
+
+    /*
+        dest가 존재하지 않으면:
+        같은 디렉토리 안에서 이름 변경
+    */
+    if (dest == NULL) {
+        if (find_child(current_dir, destPath) != NULL) {
+            printf("mv: cannot move '%s': File exists\n", destPath);
+            return;
+        }
+
+        strncpy(src->name, destPath, MAX_NAME - 1);
+        src->name[MAX_NAME - 1] = '\0';
+
+        printf("renamed '%s' to '%s'\n", srcPath, destPath);
+        return;
+    }
+
+    printf("mv: cannot overwrite '%s'\n", destPath);
 }
 
+/* rm file */
+/* rm -rf directory */
 void cmd_rm(const char *path, int recursive, int force) {
     printf("[rm] path=%s, recursive=%d, force=%d\n", path, recursive, force);
 }
