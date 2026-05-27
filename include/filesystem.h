@@ -3,40 +3,47 @@
 
 #include <stdio.h>
 
-#define MAX_NAME 50
+#define MAX_NAME 64
+#define MAX_CONTENT 4096
+#define FS_DATA_PATH "data/fs_data.txt"
+
+typedef enum {
+    NODE_DIR,
+    NODE_FILE
+} NodeType;
 
 typedef struct Node {
     char name[MAX_NAME];
-    int isDirectory;
+    NodeType type;
+    char content[MAX_CONTENT];
+    char owner[MAX_NAME];
 
     struct Node* parent;
     struct Node* child;
     struct Node* sibling;
 } Node;
 
-// 현재 디렉토리
-extern Node* currentDirectory;
+extern Node* root;
+extern Node* current_dir;
 
-// 루트 디렉토리
-extern Node* rootDirectory;
+Node* create_node(const char* name, NodeType type);
 
-// 함수 선언
-Node* createNode(char* name, int isDirectory);
+void add_child(Node* parent, Node* child);
 
-void addChild(Node* parent, Node* child);
+Node* find_child(Node* dir, const char* name);
 
-Node* findChild(Node* parent, char* name);
+void init_file_system_if_needed(void);
 
-void printPath(Node* current);
+void print_path(Node* node);
 
-Node* changeDirectory(Node* current, char* path);
+void cmd_pwd_core(void);
 
-void initializeFileSystem();
+int change_directory(const char* path);
 
-void saveFileSystem(const char* filename);
+void save_node(FILE* fp, Node* node, int depth);
 
-void loadFileSystem(const char* filename);
+void save_file_system(const char* filename);
 
-void saveNode(FILE* fp, Node* node, int depth);
+void load_file_system(const char* filename);
 
 #endif

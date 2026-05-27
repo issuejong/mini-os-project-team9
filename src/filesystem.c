@@ -4,44 +4,71 @@
 
 #include "../include/filesystem.h"
 
-// 현재 디렉토리
-Node* currentDirectory = NULL;
+Node* root = NULL;
+Node* current_dir = NULL;
 
-// 노드 생성
-Node* createNode(char* name, int isDirectory) {
-    Node* newNode = (Node*)malloc(sizeof(Node));
+Node* create_node(const char* name, NodeType type) {
+    Node* node = (Node*)malloc(sizeof(Node));
 
-    strcpy(newNode->name, name);
-    newNode->isDirectory = isDirectory;
+    if (node == NULL) {
+        printf("memory allocation failed\n");
+        exit(1);
+    }
 
-    newNode->parent = NULL;
-    newNode->child = NULL;
-    newNode->sibling = NULL;
+    strncpy(node->name, name, MAX_NAME - 1);
+    node->name[MAX_NAME - 1] = '\0';
 
-    return newNode;
+    node->type = type;
+
+    node->content[0] = '\0';
+
+    strcpy(node->owner, "team9");
+
+    node->parent = NULL;
+    node->child = NULL;
+    node->sibling = NULL;
+
+    return node;
 }
 
-// 자식 추가
-void addChild(Node* parent, Node* child) {
+void init_file_system_if_needed(void) {
+    if (root != NULL) {
+        return;
+    }
+
+    root = create_node("/", NODE_DIR);
+    root->parent = root;
+
+    current_dir = root;
+}
+
+void add_child(Node* parent, Node* child) {
+    if (parent == NULL || child == NULL) {
+        return;
+    }
+
     child->parent = parent;
 
     if (parent->child == NULL) {
         parent->child = child;
+        return;
     }
-    else {
-        Node* temp = parent->child;
 
-        while (temp->sibling != NULL) {
-            temp = temp->sibling;
-        }
+    Node* temp = parent->child;
 
-        temp->sibling = child;
+    while (temp->sibling != NULL) {
+        temp = temp->sibling;
     }
+
+    temp->sibling = child;
 }
 
-// 자식 찾기
-Node* findChild(Node* parent, char* name) {
-    Node* temp = parent->child;
+Node* find_child(Node* dir, const char* name) {
+    if (dir == NULL || name == NULL) {
+        return NULL;
+    }
+
+    Node* temp = dir->child;
 
     while (temp != NULL) {
         if (strcmp(temp->name, name) == 0) {
@@ -54,136 +81,171 @@ Node* findChild(Node* parent, char* name) {
     return NULL;
 }
 
-// 루트 디렉토리
-Node* rootDirectory = NULL;
-
-// 파일 시스템 초기화
-void initializeFileSystem() {
-    rootDirectory = createNode("/", 1);
-    currentDirectory = rootDirectory;
-}
-
-// 현재 경로 출력
-void printPath(Node* current) {
-    if (current == NULL) {
+void print_path(Node* node) {
+    if (node == NULL || node == root) {
         return;
     }
 
-    if (current == rootDirectory) {
-        printf("/");
+    print_path(node->parent);
+
+    printf("/%s", node->name);
+}
+
+void cmd_pwd_core(void) {
+    init_file_system_if_needed();
+
+    if (current_dir == root) {
+        printf("/\n");
         return;
     }
 
-    if (current->parent != NULL) {
-        printPath(current->parent);
-    }
-
-    if (current->parent == rootDirectory) {
-        printf("%s", current->name);
-    } else {
-        printf("/%s", current->name);
-    }
+    print_path(current_dir);
+    printf("\n");
 }
 
-// 디렉토리 이동
-Node* changeDirectory(Node* current, char* path) {
+int change_directory(const char* path) {
+    init_file_system_if_needed();
 
-    if (current == NULL || path == NULL) {
-        return current;
+    if (path == NULL || strlen(path) == 0) {
+        current_dir = root;
+        return 1;
     }
 
-    // 루트 이동
     if (strcmp(path, "/") == 0) {
-        return rootDirectory;
+        current_dir = root;
+        return 1;
     }
 
-    // 상대경로 처리용 복사
-    char tempPath[256];
-    strcpy(tempPath, path);
+    char temp[1024];
 
-    Node* currentNode;
+    strncpy(temp, path, sizeof(temp) - 1);
 
-    // 절대경로
+    temp[sizeof(temp) - 1] = '\0';
+
+    Node* cursor;
+
     if (path[0] == '/') {
-        currentNode = rootDirectory;
+        cursor = root;
     }
     else {
-        currentNode = current;
+        cursor = current_dir;
     }
 
-    char* token = strtok(tempPath, "/");
+    char* token = strtok(temp, "/");
 
     while (token != NULL) {
 
-        // 현재 디렉토리
         if (strcmp(token, ".") == 0) {
             token = strtok(NULL, "/");
             continue;
         }
 
-        // 상위 디렉토리
         if (strcmp(token, "..") == 0) {
 
-            if (currentNode->parent != NULL) {
-                currentNode = currentNode->parent;
+            if (cursor != root) {
+                cursor = cursor->parent;
             }
 
             token = strtok(NULL, "/");
             continue;
         }
 
-        Node* target = findChild(currentNode, token);
+        Node* next = find_child(cursor, token);
 
-        if (target == NULL) {
+        if (next == NULL) {
             printf("cd: no such directory: %s\n", token);
-            return current;
+            return 0;
         }
 
-        if (target->isDirectory == 0) {
+        if (next->type != NODE_DIR) {
             printf("cd: not a directory: %s\n", token);
-            return current;
+            return 0;
         }
 
-        currentNode = target;
+        cursor = next;
 
         token = strtok(NULL, "/");
     }
 
-    return currentNode;
+    current_dir = cursor;
+
+    return 1;
 }
 
-// 로드 함수 기본 구조
-void loadFileSystem(const char* filename) {
-    FILE* fp = fopen(filename, "r");
+static void escape_content(const char* src, char* dest, int size) {
+    int j = 0;
 
-    if (fp == NULL) {
-        printf("load error\n");
-        return;
+    for (int i = 0; src[i] != '\0' && j < size - 1; i++) {
+
+        if (src[i] == '\n' && j < size - 2) {
+            dest[j++] = '\\';
+            dest[j++] = 'n';
+        }
+        else if (src[i] == '|' && j < size - 2) {
+            dest[j++] = '\\';
+            dest[j++] = 'p';
+        }
+        else if (src[i] == '\\' && j < size - 2) {
+            dest[j++] = '\\';
+            dest[j++] = '\\';
+        }
+        else {
+            dest[j++] = src[i];
+        }
     }
 
-    fclose(fp);
+    dest[j] = '\0';
 }
-// 노드 저장
-void saveNode(FILE* fp, Node* node, int depth) {
 
+static void unescape_content(const char* src, char* dest, int size) {
+    int j = 0;
+
+    for (int i = 0; src[i] != '\0' && j < size - 1; i++) {
+
+        if (src[i] == '\\' && src[i + 1] == 'n') {
+            dest[j++] = '\n';
+            i++;
+        }
+        else if (src[i] == '\\' && src[i + 1] == 'p') {
+            dest[j++] = '|';
+            i++;
+        }
+        else if (src[i] == '\\' && src[i + 1] == '\\') {
+            dest[j++] = '\\';
+            i++;
+        }
+        else {
+            dest[j++] = src[i];
+        }
+    }
+
+    dest[j] = '\0';
+}
+
+void save_node(FILE* fp, Node* node, int depth) {
     if (node == NULL) {
         return;
     }
 
-    for (int i = 0; i < depth; i++) {
-        fprintf(fp, "  ");
-    }
+    char escaped[MAX_CONTENT * 2];
 
-    fprintf(fp, "%s %d\n", node->name, node->isDirectory);
+    escape_content(node->content, escaped, sizeof(escaped));
 
-    saveNode(fp, node->child, depth + 1);
+    fprintf(fp,
+            "%d|%d|%s|%s|%s\n",
+            depth,
+            node->type,
+            node->name,
+            node->owner,
+            escaped);
 
-    saveNode(fp, node->sibling, depth);
+    save_node(fp, node->child, depth + 1);
+
+    save_node(fp, node->sibling, depth);
 }
 
-
-// 파일 시스템 저장
-void saveFileSystem(const char* filename) {
+void save_file_system(const char* filename) {
+    init_file_system_if_needed();
 
     FILE* fp = fopen(filename, "w");
 
@@ -192,9 +254,100 @@ void saveFileSystem(const char* filename) {
         return;
     }
 
-    saveNode(fp, rootDirectory, 0);
+    save_node(fp, root, 0);
 
     fclose(fp);
 
     printf("filesystem saved\n");
+}
+
+static void free_tree(Node* node) {
+    if (node == NULL) {
+        return;
+    }
+
+    Node* child = node->child;
+
+    while (child != NULL) {
+        Node* next = child->sibling;
+
+        free_tree(child);
+
+        child = next;
+    }
+
+    free(node);
+}
+
+void load_file_system(const char* filename) {
+    FILE* fp = fopen(filename, "r");
+
+    if (fp == NULL) {
+        init_file_system_if_needed();
+        return;
+    }
+
+    if (root != NULL) {
+        free_tree(root);
+
+        root = NULL;
+        current_dir = NULL;
+    }
+
+    Node* stack[128] = { NULL };
+
+    char line[8192];
+
+    while (fgets(line, sizeof(line), fp) != NULL) {
+
+        line[strcspn(line, "\n")] = '\0';
+
+        char* depth_str = strtok(line, "|");
+        char* type_str = strtok(NULL, "|");
+        char* name = strtok(NULL, "|");
+        char* owner = strtok(NULL, "|");
+        char* content = strtok(NULL, "");
+
+        if (depth_str == NULL ||
+            type_str == NULL ||
+            name == NULL ||
+            owner == NULL) {
+            continue;
+        }
+
+        int depth = atoi(depth_str);
+
+        NodeType type = (NodeType)atoi(type_str);
+
+        Node* node = create_node(name, type);
+
+        strncpy(node->owner, owner, MAX_NAME - 1);
+
+        node->owner[MAX_NAME - 1] = '\0';
+
+        if (content != NULL) {
+            unescape_content(content,
+                             node->content,
+                             MAX_CONTENT);
+        }
+
+        if (depth == 0) {
+            root = node;
+            root->parent = root;
+        }
+        else {
+            add_child(stack[depth - 1], node);
+        }
+
+        stack[depth] = node;
+    }
+
+    fclose(fp);
+
+    if (root == NULL) {
+        init_file_system_if_needed();
+    }
+    else {
+        current_dir = root;
+    }
 }
