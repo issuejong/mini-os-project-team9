@@ -616,40 +616,186 @@ void cmd_mv(const char *srcPath, const char *destPath) {
 /* rm file */
 /* rm -rf directory */
 void cmd_rm(const char *path, int recursive, int force) {
-    init_file_system_if_needed();
-
-    if (path == NULL) {
-        printf("rm: missing operand\n");
-        return;
-    }
-
-    Node *target = find_node_simple(path);
-
-    if (target == NULL) {
-        if (!force) {
-            printf("rm: cannot remove '%s': No such file or directory\n", path);
-        }
-        return;
-    }
-
-    if (target == root) {
-        printf("rm: cannot remove root directory\n");
-        return;
-    }
-
-    if (target->type == NODE_DIR && !recursive) {
-        printf("rm: cannot remove '%s': Is a directory\n", path);
-        return;
-    }
-
-    Node *parent = target->parent;
-
-    if (!detach_child(parent, target)) {
-        printf("rm: failed to remove '%s'\n", path);
-        return;
-    }
-
-    free_tree(target);
-
-    printf("removed '%s'\n", path);
+    printf("[rm] path=%s, recursive=%d, force=%d\n", path, recursive, force);
 }
+
+/* Sunbin */
+
+/*======================
+tree
+======================*/
+
+static void print_tree_node_option(Node *node, int depth, int dirOnly)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    if (dirOnly && node->type != NODE_DIR) {
+        return;
+    }
+
+    for (int i = 0; i < depth; i++) {
+        printf("  ");
+    }
+
+    if (node->type == NODE_DIR) {
+        printf("[D] %s\n", node->name);
+    } else {
+        printf("[F] %s\n", node->name);
+    }
+
+    Node *child = node->child;
+    while (child != NULL) {
+        print_tree_node_option(child, depth + 1, dirOnly);
+        child = child->sibling;
+    }
+}
+
+void cmd_tree(int argc, char *argv[])
+{
+    int dirOnly = 0;
+
+    if (argc > 2) {
+        printf("tree: too many arguments\n");
+        printf("usage: tree [-d]\n");
+        return;
+    }
+
+    if (argc == 2) {
+        if (strcmp(argv[1], "-d") == 0) {
+            dirOnly = 1;
+        } else {
+            printf("tree: invalid option '%s'\n", argv[1]);
+            printf("usage: tree [-d]\n");
+            return;
+        }
+    }
+    print_tree_node_option(root, 0, dirOnly);
+}
+
+/*====================
+find
+====================*/
+
+static void print_find_usage(void)
+{
+    printf("usage:\n");
+    printf("  find <name>\n");
+    printf("  find -name <name>\n");
+    printf("  find -type d|f\n");
+    printf("  find -name <name> -type d|f\n");
+}
+
+static int match_find_condition(Node *node, const char *nameFilter, int typeFilter)
+{
+    if (node == NULL) {
+        return 0;
+    }
+
+    if (nameFilter != NULL && strcmp(node->name, nameFilter) != 0) {
+        return 0;
+    }
+
+    if (typeFilter == 1 && node->type != NODE_DIR) {
+        return 0;
+    }
+
+    if (typeFilter == 2 && node->type != NODE_FILE) {
+        return 0;
+    }
+
+    return 1;
+}
+
+static int find_node_advanced(Node *node, const char *parentPath, const char *nameFilter, int typeFilter)
+{
+    if (node == NULL) {
+        return 0;
+    }
+
+    char currentPath[1024];
+
+    if (strcmp(node->name, "/") == 0) {
+        snprintf(currentPath, sizeof(currentPath), "/");
+    } else if (strcmp(parentPath, "/") == 0) {
+        snprintf(currentPath, sizeof(currentPath), "/%s", node->name);
+    } else {
+        snprintf(currentPath, sizeof(currentPath), "%s/%s", parentPath, node->name);
+    }
+
+    int found = 0;
+
+    if (match_find_condition(node, nameFilter, typeFilter)) {
+        printf("%s\n", currentPath);
+        found = 1;
+    }
+
+    Node *child = node->child;
+    while (child != NULL) {
+        if (find_node_advanced(child, currentPath, nameFilter, typeFilter)) {
+            found = 1;
+        }
+        child = child->sibling;
+    }
+
+    return found;
+}
+
+void cmd_find(int argc, char *argv[])
+{
+    const char *nameFilter = NULL;
+    int typeFilter = 0;
+
+    if (argc < 2) {
+        print_find_usage();
+        return;
+    }
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-name") == 0) {
+            if (i + 1 >= argc) {
+                printf("find: option '-name' requires an argument\n");
+                print_find_usage();
+                return;
+            }
+            nameFilter = argv[i + 1];
+            i++;
+        } else if (strcmp(argv[i], "-type") == 0) {
+            if (i + 1 >= argc) {
+                printf("find: option '-type' requires an argument\n");
+                print_find_usage();
+                return;
+            }
+
+            if (strcmp(argv[i + 1], "d") == 0) {
+                typeFilter = 1;
+            } else if (strcmp(argv[i + 1], "f") == 0) {
+                typeFilter = 2;
+            } else {
+                printf("find: invalid type '%s'\n", argv[i + 1]);
+                printf("find: type must be 'd' or 'f'\n");
+                return;
+            }
+            i++;
+        } else if (argv[i][0] == '-') {
+            printf("find: invalid option '%s'\n", argv[i]);
+            print_find_usage();
+            return;
+        } else {
+            if (nameFilter != NULL) {
+                printf("find: too many name arguments\n");
+                print_find_usage();
+                return;
+            }
+            nameFilter = argv[i];
+        }
+    }
+
+    int found = find_node_advanced(root, "/", nameFilter, typeFilter);
+
+    if (!found) {
+        printf("find: no matching result\n");
+    }
+}
+

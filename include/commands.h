@@ -14,4 +14,8 @@ void cmd_mv(const char *srcPath, const char *destPath);
 void cmd_rm(const char *path, int recursive, int force);
 void cmd_pwd(void);
 
+/* Sunbin */
+void cmd_tree(int argc, char *argv[]);
+void cmd_find(int argc, char *argv[]);
+
 #endif
