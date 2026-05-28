@@ -548,8 +548,14 @@ void cmd_rm(const char *path, int recursive, int force) {
         cursor = cursor->parent;
     }
 
-    detach_child(target->parent, target);
+    if (!detach_child(target->parent, target)) {
+    printf("rm: failed to remove '%s'\n", path);
+    return;
+    }
+
     free_tree(target);
+
+    printf("removed '%s'\n", path);
 }
 
 /* Sunbin */
