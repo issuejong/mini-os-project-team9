@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "commands.h"
+#include "filesystem.h"
 #include "shell.h"
 
 #define MAX_INPUT 1024
@@ -145,6 +146,8 @@ void shell_loop(void) {
     char input[MAX_INPUT];
     char *argv[MAX_ARGS];
 
+    load_file_system(FS_DATA_PATH);
+
     printf("Mini OS started. Type 'help' for commands.\n");
 
     while (1) {
@@ -171,4 +174,6 @@ void shell_loop(void) {
 
         run_command(argc, argv);
     }
+
+    save_file_system(FS_DATA_PATH);
 }

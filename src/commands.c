@@ -2,129 +2,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include "commands.h"
+#include "filesystem.h"
 
-#define MAX_NAME 64
-#define MAX_CONTENT 4096
 #define MAX_INPUT 1024
-  
-/* Juheon */
-typedef enum {
-    NODE_DIR,
-    NODE_FILE
-} NodeType;
-
-typedef struct Node {
-    char name[MAX_NAME];
-    NodeType type;
-    char content[MAX_CONTENT];
-    char owner[MAX_NAME];
-
-    struct Node *parent;
-    struct Node *child;
-    struct Node *sibling;
-} Node;
-
-static Node *root = NULL;
-static Node *current_dir = NULL;
-
-/* =========================
-   임시 파일 시스템 함수
-   파일 시스템 담당자 코드 나오면 이 부분은 나중에 연결/수정
-   ========================= */
-
-static Node *create_node(const char *name, NodeType type) {
-    Node *node = (Node *)malloc(sizeof(Node));
-
-    if (node == NULL) {
-        printf("memory allocation failed\n");
-        exit(1);
-    }
-
-    strncpy(node->name, name, MAX_NAME - 1);
-    node->name[MAX_NAME - 1] = '\0';
-
-    node->type = type;
-    node->content[0] = '\0';
-    strcpy(node->owner, "team9");
-    node->parent = NULL;
-    node->child = NULL;
-    node->sibling = NULL;
-
-    return node;
-}
-
-static void init_file_system_if_needed(void) {
-    if (root != NULL) {
-        return;
-    }
-
-    root = create_node("/", NODE_DIR);
-    root->parent = root;
-    current_dir = root;
-}
-
-static void add_child(Node *parent, Node *child) {
-    if (parent == NULL || child == NULL) {
-        return;
-    }
-
-    child->parent = parent;
-
-    if (parent->child == NULL) {
-        parent->child = child;
-        return;
-    }
-
-    Node *temp = parent->child;
-
-    while (temp->sibling != NULL) {
-        temp = temp->sibling;
-    }
-
-    temp->sibling = child;
-}
-
-static Node *find_child(Node *dir, const char *name) {
-    if (dir == NULL || name == NULL) {
-        return NULL;
-    }
-
-    Node *temp = dir->child;
-
-    while (temp != NULL) {
-        if (strcmp(temp->name, name) == 0) {
-            return temp;
-        }
-
-        temp = temp->sibling;
-    }
-
-    return NULL;
-}
 
 /* =========================
    pwd
    ========================= */
 
-static void print_path(Node *node) {
-    if (node == NULL || node == root) {
-        return;
-    }
-
-    print_path(node->parent);
-    printf("/%s", node->name);
-}
-
 void cmd_pwd(void) {
-    init_file_system_if_needed();
-
-    if (current_dir == root) {
-        printf("/\n");
-        return;
-    }
-
-    print_path(current_dir);
-    printf("\n");
+    cmd_pwd_core();
 }
 
 /* =========================
@@ -132,39 +19,12 @@ void cmd_pwd(void) {
    ========================= */
 
 void cmd_cd(int argc, char *argv[]) {
-    init_file_system_if_needed();
-
     if (argc < 2) {
-        current_dir = root;
+        change_directory("/");
         return;
     }
 
-    char *path = argv[1];
-
-    if (strcmp(path, ".") == 0) {
-        return;
-    }
-
-    if (strcmp(path, "..") == 0) {
-        if (current_dir != root) {
-            current_dir = current_dir->parent;
-        }
-        return;
-    }
-
-    Node *target = find_child(current_dir, path);
-
-    if (target == NULL) {
-        printf("cd: no such directory: %s\n", path);
-        return;
-    }
-
-    if (target->type != NODE_DIR) {
-        printf("cd: not a directory: %s\n", path);
-        return;
-    }
-
-    current_dir = target;
+    change_directory(argv[1]);
 }
 
 /* =========================
@@ -255,7 +115,7 @@ static void mkdir_p(const char *path) {
     strncpy(temp, path, MAX_INPUT - 1);
     temp[MAX_INPUT - 1] = '\0';
 
-    Node *cursor = current_dir;
+    Node *cursor = path[0] == '/' ? root : current_dir;
     char *token = strtok(temp, "/");
 
     while (token != NULL) {
@@ -414,8 +274,13 @@ void cmd_cat(int argc, char *argv[]) {
 
 /* Jihwan */
 
-/* 현재 디렉토리 기준으로 간단한 파일/디렉토리 이름 찾기 */
-static Node *find_node_simple(const char *path) {
+static Node *find_node_by_path(const char *path) {
+    char temp[MAX_INPUT];
+    Node *cursor;
+    char *token;
+
+    init_file_system_if_needed();
+
     if (path == NULL || strlen(path) == 0) {
         return NULL;
     }
@@ -431,7 +296,39 @@ static Node *find_node_simple(const char *path) {
         return root;
     }
 
-    return find_child(current_dir, path);
+    if (strcmp(path, "/") == 0) {
+        return root;
+    }
+
+    strncpy(temp, path, sizeof(temp) - 1);
+    temp[sizeof(temp) - 1] = '\0';
+
+    cursor = path[0] == '/' ? root : current_dir;
+    token = strtok(temp, "/");
+
+    while (token != NULL) {
+        if (strcmp(token, ".") == 0) {
+            token = strtok(NULL, "/");
+            continue;
+        }
+
+        if (strcmp(token, "..") == 0) {
+            if (cursor != root) {
+                cursor = cursor->parent;
+            }
+            token = strtok(NULL, "/");
+            continue;
+        }
+
+        cursor = find_child(cursor, token);
+        if (cursor == NULL) {
+            return NULL;
+        }
+
+        token = strtok(NULL, "/");
+    }
+
+    return cursor;
 }
 
 /* 부모의 child/sibling 연결에서 target을 분리 */
@@ -489,7 +386,7 @@ void cmd_chown(const char *owner, const char *path) {
         return;
     }
 
-    Node *target = find_node_simple(path);
+    Node *target = find_node_by_path(path);
 
     if (target == NULL) {
         printf("chown: cannot access '%s': No such file or directory\n", path);
@@ -512,7 +409,7 @@ void cmd_grep(const char *keyword, const char *path, int showLineNumber) {
         return;
     }
 
-    Node *file = find_node_simple(path);
+    Node *file = find_node_by_path(path);
 
     if (file == NULL) {
         printf("grep: %s: No such file\n", path);
@@ -562,7 +459,7 @@ void cmd_mv(const char *srcPath, const char *destPath) {
         return;
     }
 
-    Node *src = find_node_simple(srcPath);
+    Node *src = find_node_by_path(srcPath);
 
     if (src == NULL) {
         printf("mv: cannot stat '%s': No such file or directory\n", srcPath);
@@ -574,7 +471,7 @@ void cmd_mv(const char *srcPath, const char *destPath) {
         return;
     }
 
-    Node *dest = find_node_simple(destPath);
+    Node *dest = find_node_by_path(destPath);
 
     /*
         dest가 기존 디렉토리이면:
@@ -616,7 +513,43 @@ void cmd_mv(const char *srcPath, const char *destPath) {
 /* rm file */
 /* rm -rf directory */
 void cmd_rm(const char *path, int recursive, int force) {
-    printf("[rm] path=%s, recursive=%d, force=%d\n", path, recursive, force);
+    init_file_system_if_needed();
+
+    if (path == NULL) {
+        printf("rm: missing operand\n");
+        return;
+    }
+
+    Node *target = find_node_by_path(path);
+
+    if (target == NULL) {
+        if (!force) {
+            printf("rm: cannot remove '%s': No such file or directory\n", path);
+        }
+        return;
+    }
+
+    if (target == root) {
+        printf("rm: cannot remove root directory\n");
+        return;
+    }
+
+    if (target->type == NODE_DIR && !recursive) {
+        printf("rm: cannot remove '%s': Is a directory\n", path);
+        return;
+    }
+
+    Node *cursor = current_dir;
+    while (cursor != root) {
+        if (cursor == target) {
+            current_dir = root;
+            break;
+        }
+        cursor = cursor->parent;
+    }
+
+    detach_child(target->parent, target);
+    free_tree(target);
 }
 
 /* Sunbin */
@@ -654,6 +587,8 @@ static void print_tree_node_option(Node *node, int depth, int dirOnly)
 
 void cmd_tree(int argc, char *argv[])
 {
+    init_file_system_if_needed();
+
     int dirOnly = 0;
 
     if (argc > 2) {
@@ -744,6 +679,8 @@ static int find_node_advanced(Node *node, const char *parentPath, const char *na
 
 void cmd_find(int argc, char *argv[])
 {
+    init_file_system_if_needed();
+
     const char *nameFilter = NULL;
     int typeFilter = 0;
 
@@ -798,4 +735,3 @@ void cmd_find(int argc, char *argv[])
         printf("find: no matching result\n");
     }
 }
-
