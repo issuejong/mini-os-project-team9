@@ -41,25 +41,43 @@ void cmd_ls(int argc, char *argv[]) {
     int show_all = 0;
     int long_format = 0;
 
-    if (argc >= 2) {
-        if (strcmp(argv[1], "-a") == 0) {
+    /*
+       지원 옵션:
+       ls
+       ls -a
+       ls -l
+       ls -al
+       ls -la
+       ls -a -l
+       ls -l -a
+    */
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-a") == 0) {
             show_all = 1;
-        } else if (strcmp(argv[1], "-l") == 0) {
+        }
+        else if (strcmp(argv[i], "-l") == 0) {
             long_format = 1;
-        } else if (strcmp(argv[1], "-al") == 0 || strcmp(argv[1], "-la") == 0) {
+        }
+        else if (strcmp(argv[i], "-al") == 0 || strcmp(argv[i], "-la") == 0) {
             show_all = 1;
             long_format = 1;
-        } else {
-            printf("ls: invalid option: %s\n", argv[1]);
+        }
+        else {
+            printf("ls: invalid option: %s\n", argv[i]);
             return;
         }
     }
 
+    if (long_format) {
+        printf("TYPE OWNER NAME\n");
+    }
+
     if (show_all) {
         if (long_format) {
-            printf("d .\n");
-            printf("d ..\n");
-        } else {
+            printf("d    team9 .\n");
+            printf("d    team9 ..\n");
+        }
+        else {
             printf(".  ..  ");
         }
     }
@@ -73,8 +91,12 @@ void cmd_ls(int argc, char *argv[]) {
         }
 
         if (long_format) {
-            printf("%c %s\n", temp->type == NODE_DIR ? 'd' : '-', temp->name);
-        } else {
+            printf("%c    %s %s\n",
+                   temp->type == NODE_DIR ? 'd' : '-',
+                   temp->owner,
+                   temp->name);
+        }
+        else {
             printf("%s  ", temp->name);
         }
 
@@ -93,6 +115,15 @@ void cmd_ls(int argc, char *argv[]) {
 static void mkdir_single(const char *dirname) {
     if (dirname == NULL || strlen(dirname) == 0) {
         printf("mkdir: missing operand\n");
+        return;
+    }
+
+    /*
+       mkdir a/b 같은 입력은 일반 mkdir이 아니라 -p에서 처리하는 게 맞음.
+       그래서 기본 mkdir에서는 / 포함 이름을 막는다.
+    */
+    if (strchr(dirname, '/') != NULL) {
+        printf("mkdir: cannot create directory '%s': use -p for path\n", dirname);
         return;
     }
 
@@ -119,12 +150,27 @@ static void mkdir_p(const char *path) {
     char *token = strtok(temp, "/");
 
     while (token != NULL) {
+        if (strcmp(token, ".") == 0) {
+            token = strtok(NULL, "/");
+            continue;
+        }
+
+        if (strcmp(token, "..") == 0) {
+            if (cursor != root) {
+                cursor = cursor->parent;
+            }
+
+            token = strtok(NULL, "/");
+            continue;
+        }
+
         Node *next = find_child(cursor, token);
 
         if (next == NULL) {
             next = create_node(token, NODE_DIR);
             add_child(cursor, next);
-        } else if (next->type != NODE_DIR) {
+        }
+        else if (next->type != NODE_DIR) {
             printf("mkdir: cannot create directory '%s': Not a directory\n", token);
             return;
         }
@@ -151,7 +197,8 @@ void cmd_mkdir(int argc, char *argv[]) {
         for (int i = 2; i < argc; i++) {
             mkdir_p(argv[i]);
         }
-    } else {
+    }
+    else {
         for (int i = 1; i < argc; i++) {
             mkdir_single(argv[i]);
         }
@@ -180,7 +227,9 @@ static void print_with_line_number(const char *content) {
         }
     }
 
-    printf("\n");
+    if (content[strlen(content) - 1] != '\n') {
+        printf("\n");
+    }
 }
 
 static void cat_read_file(const char *filename, int line_number) {
@@ -198,18 +247,35 @@ static void cat_read_file(const char *filename, int line_number) {
 
     if (line_number) {
         print_with_line_number(file->content);
-    } else {
+    }
+    else {
         printf("%s", file->content);
+
+        if (file->content[0] != '\0' &&
+            file->content[strlen(file->content) - 1] != '\n') {
+            printf("\n");
+        }
     }
 }
 
 static void cat_write_file(const char *filename) {
+    if (filename == NULL || strlen(filename) == 0) {
+        printf("cat: missing file name\n");
+        return;
+    }
+
+    if (strchr(filename, '/') != NULL) {
+        printf("cat: %s: path is not supported\n", filename);
+        return;
+    }
+
     Node *file = find_child(current_dir, filename);
 
     if (file == NULL) {
         file = create_node(filename, NODE_FILE);
         add_child(current_dir, file);
-    } else if (file->type != NODE_FILE) {
+    }
+    else if (file->type != NODE_FILE) {
         printf("cat: %s: Is a directory\n", filename);
         return;
     }
@@ -249,6 +315,10 @@ void cmd_cat(int argc, char *argv[]) {
         return;
     }
 
+    /*
+       cat > file
+       파일 생성 또는 기존 파일 덮어쓰기
+    */
     if (strcmp(argv[1], ">") == 0) {
         if (argc < 3) {
             printf("cat: missing file name after '>'\n");
@@ -259,6 +329,10 @@ void cmd_cat(int argc, char *argv[]) {
         return;
     }
 
+    /*
+       cat -n file
+       줄 번호 출력
+    */
     if (strcmp(argv[1], "-n") == 0) {
         if (argc < 3) {
             printf("cat: missing file name after '-n'\n");
@@ -269,6 +343,10 @@ void cmd_cat(int argc, char *argv[]) {
         return;
     }
 
+    /*
+       cat file
+       파일 내용 출력
+    */
     cat_read_file(argv[1], 0);
 }
 

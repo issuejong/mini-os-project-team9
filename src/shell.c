@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+
 #include "commands.h"
 #include "filesystem.h"
 #include "shell.h"
@@ -86,6 +89,29 @@ static int parse_input(char *input, char *argv[]) {
     return argc;
 }
 
+static void print_current_path(Node *node) {
+    if (node == NULL || node == root) {
+        return;
+    }
+
+    print_current_path(node->parent);
+    printf("/%s", node->name);
+}
+
+static void print_prompt(void) {
+    init_file_system_if_needed();
+
+    printf("miniOS:");
+
+    if (current_dir == root) {
+        printf("/");
+    } else {
+        print_current_path(current_dir);
+    }
+
+    printf(" $ ");
+}
+
 static void run_command(int argc, char *argv[]) {
     if (argc == 0) {
         return;
@@ -146,12 +172,19 @@ void shell_loop(void) {
     char input[MAX_INPUT];
     char *argv[MAX_ARGS];
 
+    struct stat st = {0};
+
+    if (stat("data", &st) == -1) {
+        mkdir("data", 0755);
+    }
+    
+
     load_file_system(FS_DATA_PATH);
 
     printf("Mini OS started. Type 'help' for commands.\n");
 
     while (1) {
-        printf("miniOS:/ $ ");
+        print_prompt();
         fflush(stdout);
 
         if (fgets(input, sizeof(input), stdin) == NULL) {
