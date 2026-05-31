@@ -3,6 +3,7 @@
 #include <string.h>
 #include "commands.h"
 #include "filesystem.h"
+#include "thread_utils.h"
 
 #define MAX_INPUT 1024
 
@@ -69,13 +70,13 @@ void cmd_ls(int argc, char *argv[]) {
     }
 
     if (long_format) {
-        printf("TYPE OWNER NAME\n");
+    printf("%-6s %-10s %-6s %s\n", "TYPE", "OWNER", "SIZE", "NAME");
     }
 
     if (show_all) {
         if (long_format) {
-            printf("d    team9 .\n");
-            printf("d    team9 ..\n");
+            printf("%-6c %-10s %-6d %s\n", 'd', "team9", 0, ".");
+            printf("%-6c %-10s %-6d %s\n", 'd', "team9", 0, "..");
         }
         else {
             printf(".  ..  ");
@@ -91,10 +92,11 @@ void cmd_ls(int argc, char *argv[]) {
         }
 
         if (long_format) {
-            printf("%c    %s %s\n",
-                   temp->type == NODE_DIR ? 'd' : '-',
-                   temp->owner,
-                   temp->name);
+            printf("%-6c %-10s %-6d %s\n",
+            temp->type == NODE_DIR ? 'd' : '-',
+            temp->owner,
+            (int)strlen(temp->content),
+            temp->name);
         }
         else {
             printf("%s  ", temp->name);
@@ -147,11 +149,12 @@ static void mkdir_p(const char *path) {
     temp[MAX_INPUT - 1] = '\0';
 
     Node *cursor = path[0] == '/' ? root : current_dir;
-    char *token = strtok(temp, "/");
+    char *saveptr = NULL;
+    char *token = strtok_r(temp, "/", &saveptr);
 
     while (token != NULL) {
         if (strcmp(token, ".") == 0) {
-            token = strtok(NULL, "/");
+             token = strtok_r(NULL, "/", &saveptr);
             continue;
         }
 
@@ -160,7 +163,7 @@ static void mkdir_p(const char *path) {
                 cursor = cursor->parent;
             }
 
-            token = strtok(NULL, "/");
+            token = strtok_r(NULL, "/", &saveptr);
             continue;
         }
 
@@ -176,33 +179,70 @@ static void mkdir_p(const char *path) {
         }
 
         cursor = next;
-        token = strtok(NULL, "/");
+        token = strtok_r(NULL, "/", &saveptr); 
     }
+}
+
+// 수정
+typedef struct {
+    char path[MAX_INPUT];
+    int use_p;
+} MkdirArg;
+
+static void *mkdir_thread(void *arg) {
+    MkdirArg *a = (MkdirArg *)arg;
+    printf("[thread %lu] creating: %s\n", pthread_self(), a->path);
+    fflush(stdout);
+    fs_lock();
+    if (a->use_p) {
+        mkdir_p(a->path);
+    } else {
+        mkdir_single(a->path);
+    }
+    fs_unlock();
+    free(a);
+    return NULL;
 }
 
 void cmd_mkdir(int argc, char *argv[]) {
     init_file_system_if_needed();
+    if (argc < 2) { printf("mkdir: missing operand\n"); return; }
 
-    if (argc < 2) {
-        printf("mkdir: missing operand\n");
-        return;
-    }
+    int start = 1;
+    int use_p = 0;
 
     if (strcmp(argv[1], "-p") == 0) {
-        if (argc < 3) {
-            printf("mkdir: missing operand after '-p'\n");
+        if (argc < 3) { printf("mkdir: missing operand after '-p'\n"); return; }
+        start = 2;
+        use_p = 1;
+    }
+
+    int n = argc - start;
+    pthread_t *threads = malloc(sizeof(pthread_t) * n);
+    if (threads == NULL) { printf("mkdir: memory allocation failed\n"); return; }
+
+    for (int i = 0; i < n; i++) {
+        MkdirArg *a = malloc(sizeof(MkdirArg));
+        if (a == NULL) {
+            printf("mkdir: memory allocation failed\n");
+            free(threads);
             return;
         }
+        strncpy(a->path, argv[start + i], MAX_INPUT - 1);
+        a->path[MAX_INPUT - 1] = '\0';
+        a->use_p = use_p;
 
-        for (int i = 2; i < argc; i++) {
-            mkdir_p(argv[i]);
+        if (pthread_create(&threads[i], NULL, mkdir_thread, a) != 0) {
+            printf("mkdir: failed to create thread for '%s'\n", a->path);
+            free(a);
+            threads[i] = 0;
         }
     }
-    else {
-        for (int i = 1; i < argc; i++) {
-            mkdir_single(argv[i]);
-        }
+
+    for (int i = 0; i < n; i++) {
+        if (threads[i] != 0) pthread_join(threads[i], NULL);
     }
+    free(threads);
 }
 
 /* =========================
