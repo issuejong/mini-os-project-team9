@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "commands.h"
+#include "thread_utils.h"
 #include "filesystem.h"
 
 #define MAX_INPUT 1024
@@ -194,14 +195,9 @@ void cmd_mkdir(int argc, char *argv[]) {
             return;
         }
 
-        for (int i = 2; i < argc; i++) {
-            mkdir_p(argv[i]);
-        }
-    }
-    else {
-        for (int i = 1; i < argc; i++) {
-            mkdir_single(argv[i]);
-        }
+        threaded_mkdir_tasks(&argv[2], argc - 2, mkdir_p);
+    } else {
+        threaded_mkdir_tasks(&argv[1], argc - 1, mkdir_single);
     }
 }
 
