@@ -75,8 +75,8 @@ void cmd_ls(int argc, char *argv[]) {
 
     if (show_all) {
         if (long_format) {
-            printf("d    team9 .\n");
-            printf("d    team9 ..\n");
+            printf("%-6c %-10s %-6d %s\n", 'd', "team9", 0, ".");
+            printf("%-6c %-10s %-6d %s\n", 'd', "team9", 0, "..");
         }
         else {
             printf(".  ..  ");
