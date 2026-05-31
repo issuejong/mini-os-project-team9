@@ -3,6 +3,7 @@
 #include <string.h>
 #include "commands.h"
 #include "filesystem.h"
+#include "thread_utils.h"
 
 #define MAX_INPUT 1024
 
@@ -69,7 +70,7 @@ void cmd_ls(int argc, char *argv[]) {
     }
 
     if (long_format) {
-        printf("TYPE OWNER NAME\n");
+    printf("%-6s %-10s %-6s %s\n", "TYPE", "OWNER", "SIZE", "NAME");
     }
 
     if (show_all) {
@@ -91,10 +92,11 @@ void cmd_ls(int argc, char *argv[]) {
         }
 
         if (long_format) {
-            printf("%c    %s %s\n",
-                   temp->type == NODE_DIR ? 'd' : '-',
-                   temp->owner,
-                   temp->name);
+            printf("%-6c %-10s %-6d %s\n",
+            temp->type == NODE_DIR ? 'd' : '-',
+            temp->owner,
+            (int)strlen(temp->content),
+            temp->name);
         }
         else {
             printf("%s  ", temp->name);
@@ -180,6 +182,21 @@ static void mkdir_p(const char *path) {
     }
 }
 
+typedef struct {
+    char name[256];
+} MkdirArg;
+
+static void *mkdir_thread(void *arg) {
+    MkdirArg *a = (MkdirArg *)arg;
+    printf("[thread %lu] creating: %s\n", pthread_self(), a->name);
+    fflush(stdout);
+    fs_lock();
+    mkdir_single(a->name);
+    fs_unlock();
+    free(a);
+    return NULL;
+}
+
 void cmd_mkdir(int argc, char *argv[]) {
     init_file_system_if_needed();
 
@@ -193,16 +210,24 @@ void cmd_mkdir(int argc, char *argv[]) {
             printf("mkdir: missing operand after '-p'\n");
             return;
         }
-
         for (int i = 2; i < argc; i++) {
             mkdir_p(argv[i]);
         }
+        return;
     }
-    else {
-        for (int i = 1; i < argc; i++) {
-            mkdir_single(argv[i]);
-        }
+
+    int n = argc - 1;
+    pthread_t *threads = malloc(sizeof(pthread_t) * n);
+    for (int i = 0; i < n; i++) {
+        MkdirArg *a = malloc(sizeof(MkdirArg));
+        strncpy(a->name, argv[i + 1], 255);
+        a->name[255] = '\0';
+        pthread_create(&threads[i], NULL, mkdir_thread, a);
     }
+    for (int i = 0; i < n; i++) {
+        pthread_join(threads[i], NULL);
+    }
+    free(threads);
 }
 
 /* =========================
