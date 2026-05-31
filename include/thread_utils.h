@@ -1,11 +1,8 @@
 #ifndef THREAD_UTILS_H
 #define THREAD_UTILS_H
 
-#include <pthread.h>
+typedef void (*MkdirTaskFunc)(const char *path);
 
-extern pthread_mutex_t fs_mutex;
-
-void fs_lock(void);
-void fs_unlock(void);
+void threaded_mkdir_tasks(char *paths[], int count, MkdirTaskFunc task_func);
 
 #endif

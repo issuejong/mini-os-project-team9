@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "commands.h"
+#include "thread_utils.h"
 #include "filesystem.h"
 #include "thread_utils.h"
 
@@ -184,65 +185,24 @@ static void mkdir_p(const char *path) {
 }
 
 // 수정
-typedef struct {
-    char path[MAX_INPUT];
-    int use_p;
-} MkdirArg;
-
-static void *mkdir_thread(void *arg) {
-    MkdirArg *a = (MkdirArg *)arg;
-    printf("[thread %lu] creating: %s\n", pthread_self(), a->path);
-    fflush(stdout);
-    fs_lock();
-    if (a->use_p) {
-        mkdir_p(a->path);
-    } else {
-        mkdir_single(a->path);
-    }
-    fs_unlock();
-    free(a);
-    return NULL;
-}
-
 void cmd_mkdir(int argc, char *argv[]) {
     init_file_system_if_needed();
-    if (argc < 2) { printf("mkdir: missing operand\n"); return; }
 
-    int start = 1;
-    int use_p = 0;
+    if (argc < 2) {
+        printf("mkdir: missing operand\n");
+        return;
+    }
 
     if (strcmp(argv[1], "-p") == 0) {
-        if (argc < 3) { printf("mkdir: missing operand after '-p'\n"); return; }
-        start = 2;
-        use_p = 1;
-    }
-
-    int n = argc - start;
-    pthread_t *threads = malloc(sizeof(pthread_t) * n);
-    if (threads == NULL) { printf("mkdir: memory allocation failed\n"); return; }
-
-    for (int i = 0; i < n; i++) {
-        MkdirArg *a = malloc(sizeof(MkdirArg));
-        if (a == NULL) {
-            printf("mkdir: memory allocation failed\n");
-            free(threads);
+        if (argc < 3) {
+            printf("mkdir: missing operand after '-p'\n");
             return;
         }
-        strncpy(a->path, argv[start + i], MAX_INPUT - 1);
-        a->path[MAX_INPUT - 1] = '\0';
-        a->use_p = use_p;
 
-        if (pthread_create(&threads[i], NULL, mkdir_thread, a) != 0) {
-            printf("mkdir: failed to create thread for '%s'\n", a->path);
-            free(a);
-            threads[i] = 0;
-        }
+        threaded_mkdir_tasks(&argv[2], argc - 2, mkdir_p);
+    } else {
+        threaded_mkdir_tasks(&argv[1], argc - 1, mkdir_single);
     }
-
-    for (int i = 0; i < n; i++) {
-        if (threads[i] != 0) pthread_join(threads[i], NULL);
-    }
-    free(threads);
 }
 
 /* =========================
