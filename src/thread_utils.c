@@ -49,7 +49,7 @@ void threaded_mkdir_tasks(char *paths[], int count, MkdirTaskFunc task_func)
         tasks[i].path[THREAD_PATH_MAX - 1] = '\0';
         tasks[i].task_func = task_func;
 
-        if (pthread_create(&threads[i], NULL, mkdir_thread_runner, &tasks[i]) != 0) {
+        if (pthread_create(&threads[created_count], NULL, mkdir_thread_runner, &tasks[i]) != 0) {
             printf("mkdir: failed to create thread for %s\n", paths[i]);
         } else {
             created_count++;

@@ -175,9 +175,12 @@ void shell_loop(void) {
     struct stat st = {0};
 
     if (stat("data", &st) == -1) {
+    #ifdef _WIN32
+        mkdir("data");
+    #else
         mkdir("data", 0755);
+    #endif
     }
-    
 
     load_file_system(FS_DATA_PATH);
 

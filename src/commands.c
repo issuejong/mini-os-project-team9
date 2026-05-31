@@ -4,6 +4,7 @@
 #include "commands.h"
 #include "thread_utils.h"
 #include "filesystem.h"
+#include "thread_utils.h"
 
 #define MAX_INPUT 1024
 
@@ -70,13 +71,13 @@ void cmd_ls(int argc, char *argv[]) {
     }
 
     if (long_format) {
-        printf("TYPE OWNER NAME\n");
+    printf("%-6s %-10s %-6s %s\n", "TYPE", "OWNER", "SIZE", "NAME");
     }
 
     if (show_all) {
         if (long_format) {
-            printf("d    team9 .\n");
-            printf("d    team9 ..\n");
+            printf("%-6c %-10s %-6d %s\n", 'd', "team9", 0, ".");
+            printf("%-6c %-10s %-6d %s\n", 'd', "team9", 0, "..");
         }
         else {
             printf(".  ..  ");
@@ -92,10 +93,11 @@ void cmd_ls(int argc, char *argv[]) {
         }
 
         if (long_format) {
-            printf("%c    %s %s\n",
-                   temp->type == NODE_DIR ? 'd' : '-',
-                   temp->owner,
-                   temp->name);
+            printf("%-6c %-10s %-6d %s\n",
+            temp->type == NODE_DIR ? 'd' : '-',
+            temp->owner,
+            (int)strlen(temp->content),
+            temp->name);
         }
         else {
             printf("%s  ", temp->name);
@@ -148,11 +150,12 @@ static void mkdir_p(const char *path) {
     temp[MAX_INPUT - 1] = '\0';
 
     Node *cursor = path[0] == '/' ? root : current_dir;
-    char *token = strtok(temp, "/");
+    char *saveptr = NULL;
+    char *token = strtok_r(temp, "/", &saveptr);
 
     while (token != NULL) {
         if (strcmp(token, ".") == 0) {
-            token = strtok(NULL, "/");
+             token = strtok_r(NULL, "/", &saveptr);
             continue;
         }
 
@@ -161,7 +164,7 @@ static void mkdir_p(const char *path) {
                 cursor = cursor->parent;
             }
 
-            token = strtok(NULL, "/");
+            token = strtok_r(NULL, "/", &saveptr);
             continue;
         }
 
@@ -177,10 +180,11 @@ static void mkdir_p(const char *path) {
         }
 
         cursor = next;
-        token = strtok(NULL, "/");
+        token = strtok_r(NULL, "/", &saveptr); 
     }
 }
 
+// 수정
 void cmd_mkdir(int argc, char *argv[]) {
     init_file_system_if_needed();
 
